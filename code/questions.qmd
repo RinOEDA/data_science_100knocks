@@ -346,6 +346,19 @@ df_receipt |>
   ) |> 
   head(10)
 
+# 以下の書き方でも同様のことが実装できる。
+
+df_receipt |> 
+  mutate(
+    rank = min_rank(amount)
+  ) |> 
+  select(
+    customer_id,
+    amount,
+    rank
+  ) |> 
+  head(10)
+
 ```
 
 > R-020: レシート明細データ（df_receipt）に対し、1件あたりの売上金額（amount）が高い順にランクを付与し、先頭から10件表示せよ。項目は顧客ID（customer_id）、売上金額（amount）、付与したランクを表示させること。なお、売上金額（amount）が等しい場合でも別順位を付与すること。
@@ -363,6 +376,19 @@ df_receipt |>
   ) |> 
   head(10)
 
+# 以下でも同様のことが実装できる。
+help("min_rank")
+df_receipt |> 
+  mutate(
+    rank = row_number(amount)
+  ) |> 
+  select(
+    customer_id,
+    amount,
+    rank
+  ) |> 
+  head(10)
+
 ```
 
 > R-021: レシート明細データ（df_receipt）に対し、件数をカウントせよ。
@@ -371,6 +397,11 @@ df_receipt |>
 
 df_receipt |> 
   nrow()
+
+# 以下でも同様のことが実装できる。
+
+df_receipt |> 
+  count()
 
 ```
 
@@ -532,26 +563,216 @@ df_receipt |>
 
 ```
 
-R-031: レシート明細データ（df_receipt）に対し、店舗コード（store_cd）ごとに売上金額（amount）の標準偏差を計算し、降順で5件表示せよ。
+> R-031: レシート明細データ（df_receipt）に対し、店舗コード（store_cd）ごとに売上金額（amount）の標準偏差を計算し、降順で5件表示せよ。
 
-R-032: レシート明細データ（df_receipt）の売上金額（amount）について、25％刻みでパーセンタイル値を求めよ。
+```{r}
 
-R-033: レシート明細データ（df_receipt）に対し、店舗コード（store_cd）ごとに売上金額（amount）の平均を計算し、330以上のものを抽出せよ。
+df_receipt |> 
+  group_by(store_cd) |> 
+  summarise(
+    sd_amount = sqrt(mean((amount - mean(amount))^2)),
+    .groups = "drop"
+  ) |> 
+  arrange(
+    desc(sd_amount)
+  ) |> 
+  head(5)
 
-R-034: レシート明細データ（df_receipt）に対し、顧客ID（customer_id）ごとに売上金額（amount）を合計して全顧客の平均を求めよ。ただし、顧客IDが"Z"から始まるものは非会員を表すため、除外して計算すること。
+# sd()は不偏分散の2乗根になる。
 
-R-035: レシート明細データ（df_receipt）に対し、顧客ID（customer_id）ごとに売上金額（amount）を合計して全顧客の平均を求め、平均以上に買い物をしている顧客を抽出し、10件表示せよ。ただし、顧客IDが"Z"から始まるものは非会員を表すため、除外して計算すること。
+df_receipt |> 
+  group_by(store_cd) |> 
+  summarise(
+    sd_amount = sd(amount),
+    .groups = "drop"
+  ) |> 
+  arrange(
+    desc(sd_amount)
+  ) |> 
+  head(5)
 
-R-036: レシート明細データ（df_receipt）と店舗データ（df_store）を内部結合し、レシート明細データの全項目と店舗データの店舗名（store_name）を10件表示せよ。
+```
 
-R-037: 商品データ（df_product）とカテゴリデータ（df_category）を内部結合し、商品データの全項目とカテゴリデータのカテゴリ小区分名（category_small_name）を10件表示せよ。
+> R-032: レシート明細データ（df_receipt）の売上金額（amount）について、25％刻みでパーセンタイル値を求めよ。
 
-R-038: 顧客データ（df_customer）とレシート明細データ（df_receipt）から、顧客ごとの売上金額合計を求め、10件表示せよ。ただし、売上実績がない顧客については売上金額を0として表示させること。また、顧客は性別コード（gender_cd）が女性（1）であるものを対象とし、非会員（顧客IDが"Z"から始まるもの）は除外すること。
+```{r}
 
-R-039: レシート明細データ（df_receipt）から、売上日数の多い顧客の上位20件を抽出したデータと、売上金額合計の多い顧客の上位20件を抽出したデータをそれぞれ作成し、さらにその2つを完全外部結合せよ。ただし、非会員（顧客IDが"Z"から始まるもの）は除外すること。
+quantile(df_receipt$amount)
 
-R-040: 全ての店舗と全ての商品を組み合わせたデータを作成したい。店舗データ（df_store）と商品データ（df_product）を直積し、件数を計算せよ。
+```
 
+> R-033: レシート明細データ（df_receipt）に対し、店舗コード（store_cd）ごとに売上金額（amount）の平均を計算し、330以上のものを抽出せよ。
+
+```{r}
+
+df_receipt |> 
+  group_by(store_cd) |> 
+  summarise(
+    mean_amount = mean(amount),
+    .groups = "drop"
+  ) |> 
+  filter(
+    mean_amount >= 330
+  )
+
+```
+
+> R-034: レシート明細データ（df_receipt）に対し、顧客ID（customer_id）ごとに売上金額（amount）を合計して全顧客の平均を求めよ。ただし、顧客IDが"Z"から始まるものは非会員を表すため、除外して計算すること。
+
+```{r}
+
+df_receipt |> 
+  filter(
+    !str_detect(customer_id, "^Z")
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    sum_amount = sum(amount),
+    .groups = "drop"
+  ) |> 
+  summarise(
+    mean(sum_amount)
+  )
+  
+```
+
+> R-035: レシート明細データ（df_receipt）に対し、顧客ID（customer_id）ごとに売上金額（amount）を合計して全顧客の平均を求め、平均以上に買い物をしている顧客を抽出し、10件表示せよ。ただし、顧客IDが"Z"から始まるものは非会員を表すため、除外して計算すること。
+
+```{r}
+
+df_receipt |> 
+  filter(
+    !str_detect(customer_id, "^Z")
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    mean_amount = mean(total_amount)
+  ) |> 
+  filter(
+    total_amount >= mean_amount
+  ) |> 
+  head(10)
+
+```
+
+> R-036: レシート明細データ（df_receipt）と店舗データ（df_store）を内部結合し、レシート明細データの全項目と店舗データの店舗名（store_name）を10件表示せよ。
+
+```{r}
+
+df_receipt |> 
+  inner_join(df_store, by = "store_cd") |> 
+  select(
+    any_of(colnames(df_receipt)),
+    store_name
+  ) |> 
+  head(10)
+
+```
+
+> R-037: 商品データ（df_product）とカテゴリデータ（df_category）を内部結合し、商品データの全項目とカテゴリデータのカテゴリ小区分名（category_small_name）を10件表示せよ。
+
+```{r}
+
+df_product |> 
+  inner_join(df_category, by = "category_small_cd") |> 
+  select(
+    any_of(colnames(df_product)),
+    category_small_name
+  ) |> 
+  head(10)
+
+```
+
+> R-038: 顧客データ（df_customer）とレシート明細データ（df_receipt）から、顧客ごとの売上金額合計を求め、10件表示せよ。ただし、売上実績がない顧客については売上金額を0として表示させること。また、顧客は性別コード（gender_cd）が女性（1）であるものを対象とし、非会員（顧客IDが"Z"から始まるもの）は除外すること。
+
+```{r}
+
+help("left_join")
+
+df_customer |> 
+  left_join(df_receipt) |> 
+  mutate(
+    amount = if_else(is.na(amount),0,amount)
+  ) |> 
+  filter(
+    gender_cd == 1
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount)
+  ) |> 
+  head(10)
+
+# 以下の書き方の方が簡単に実装できる。
+
+df_customer |> 
+  left_join(df_receipt) |> 
+  filter(
+    gender_cd == 1
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount, na.rm = TRUE)
+    # これでNAは自動的に0にしてくれる。
+  ) |> 
+  head(10)
+
+```
+
+> R-039: レシート明細データ（df_receipt）から、売上日数の多い顧客の上位20件を抽出したデータと、売上金額合計の多い顧客の上位20件を抽出したデータをそれぞれ作成し、さらにその2つを完全外部結合せよ。ただし、非会員（顧客IDが"Z"から始まるもの）は除外すること。
+
+```{r}
+
+df_receipt_days <-
+  df_receipt |> 
+  filter(
+    !str_detect(customer_id, "^Z")
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    days = n_distinct(sales_ymd),
+    .groups = "drop"
+  ) |> 
+  arrange(
+    desc(days)
+  ) |> 
+  slice(1:20)
+
+df_receipt_amount <-
+  df_receipt |> 
+  filter(
+    !str_detect(customer_id, "^Z")
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    sum_amount = sum(amount),
+    .groups = "drop"
+  ) |> 
+  arrange(
+    desc(sum_amount)
+  ) |> 
+  slice(1:20)
+
+full_join(df_receipt_days, df_receipt_amount)
+  
+```
+
+> R-040: 全ての店舗と全ての商品を組み合わせたデータを作成したい。店舗データ（df_store）と商品データ（df_product）を直積し、件数を計算せよ。
+
+```{r}
+
+count(df_store) * count(df_product)
+
+# 正解はこう
+df_store |> 
+  cross_join(df_product) |> 
+  count()
+
+```
 R-041: レシート明細データ（df_receipt）の売上金額（amount）を日付（sales_ymd）ごとに集計し、前回売上があった日からの売上金額増減を計算せよ。そして結果を10件表示せよ。
 
 R-042: レシート明細データ（df_receipt）の売上金額（amount）を日付（sales_ymd）ごとに集計し、各日付のデータに対し、前回、前々回、3回前に売上があった日のデータを結合せよ。そして結果を10件表示せよ。
