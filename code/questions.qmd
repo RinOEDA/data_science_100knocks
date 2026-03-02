@@ -1050,8 +1050,6 @@ df_receipt |>
 
 ```{r}
 
-str_extract("asadoasd", "^....")
-
 df_receipt |> 
   mutate(
     sales_epoch = as_datetime(sales_epoch) |> 
@@ -1084,21 +1082,115 @@ df_receipt |>
 > R-051: レシート明細データ（df_receipt）の売上エポック秒を日付型に変換し、「日」だけ取り出してレシート番号(receipt_no)、レシートサブ番号（receipt_sub_no）とともに10件表示せよ。なお、「日」は0埋め2桁で取り出すこと。
 
 ```{r}
+
+df_receipt |> 
+  mutate(
+    sales_epoch = as_datetime(sales_epoch) |> format("%d")
+    # day()だとdoubleで取れちゃう
+  ) |> 
+  select(
+    sales_epoch,
+    receipt_no,
+    receipt_sub_no
+  ) |> 
+  head(10)
+
 ```
 
 > R-052: レシート明細データ（df_receipt）の売上金額（amount）を顧客ID（customer_id）ごとに合計の上、売上金額合計に対して2,000円以下を0、2,000円より大きい金額を1に二値化し、顧客ID、売上金額合計とともに10件表示せよ。ただし、顧客IDが"Z"から始まるのものは非会員を表すため、除外して計算すること。
 
 ```{r}
+
+df_receipt |> 
+  filter(
+    !str_detect(customer_id, "^Z")
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount),
+    over_2000 = if_else(total_amount > 2000, 1, 0)
+  ) |> 
+  head(10)
+
 ```
 
 > R-053: 顧客データ（df_customer）の郵便番号（postal_cd）に対し、東京（先頭3桁が100〜209のもの）を1、それ以外のものを0に二値化せよ。さらにレシート明細データ（df_receipt）と結合し、全期間において売上実績のある顧客数を、作成した二値ごとにカウントせよ。
 
 ```{r}
+
+df_customer |> 
+  mutate(
+    tokyo_cd = postal_cd |> 
+      str_extract("^...") |> 
+      between("100", "209") |> 
+      if_else(1, 0)
+    # ここは
+    # tokyo_cd = postal_cd |> 
+    # str_extract("^...") |> 
+    # between("100", "209") |> 
+    # as.numeric()
+    # TRUE, FALSEはnumericで1, 0になる。
+  ) |> 
+  left_join(df_receipt) |> 
+  # inner_join()にすると顧客データがない部分は消える。
+  # tokyo_cdごとに、全購入履歴のある顧客数の和を取る、という問題
+  mutate(
+    days = n_distinct(sales_ymd)
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    sales_days = n(),
+    days,
+    tokyo_cd,
+    .groups = "drop"
+  ) |>
+  mutate(
+    all_days = if_else(sales_days == days, 1, 0)
+  ) |> 
+  group_by(tokyo_cd) |> 
+  summarise(
+    sum(all_days)
+  )
+
+# 正しくはこんな感じ
+
+df_customer |> 
+  mutate(
+    tokyo_cd = postal_cd |> 
+    str_extract("^...") |> 
+    between("100", "209") |> 
+    as.numeric()
+  ) |> 
+  inner_join(df_receipt) |> 
+  group_by(tokyo_cd) |> 
+  mutate(
+    total_customer = n_distinct(customer_id)
+  )
+  # tokyo_cdごとに、購入履歴が1日でもある顧客数を数える、という問題
+
+
 ```
 
 > R-054: 顧客データ（df_customer）の住所（address）は、埼玉県、千葉県、東京都、神奈川県のいずれかとなっている。都道府県毎にコード値を作成し、顧客ID、住所とともに10件表示せよ。値は埼玉県を11、千葉県を12、東京都を13、神奈川県を14とすること。
 
 ```{r}
+
+df_customer |> 
+  mutate(
+    prefecture_cd = case_when(
+      str_detect(address, "^埼玉県") ~ 11,
+      str_detect(address, "^千葉県") ~ 12,
+      str_detect(address, "^東京都") ~ 13,
+      str_detect(address, "^神奈川県") ~ 14
+    )
+  ) |> 
+  select(
+    customer_id,
+    address,
+    prefecture_cd
+  ) |> 
+  head(10)
+
 ```
 
 > R-055: レシート明細（df_receipt）データの売上金額（amount）を顧客ID（customer_id）ごとに合計し、その合計金額の四分位点を求めよ。その上で、顧客ごとの売上金額合計に対して以下の基準でカテゴリ値を作成し、顧客ID、売上金額合計とともに10件表示せよ。カテゴリ値は順に1〜4とする。
@@ -1106,21 +1198,116 @@ df_receipt |>
 > 最小値以上第1四分位未満 ・・・ 1を付与 第1四分位以上第2四分位未満 ・・・ 2を付与 第2四分位以上第3四分位未満 ・・・ 3を付与 第3四分位以上 ・・・ 4を付与
 
 ```{r}
+quantile(c(1,2,3), 2)
+
+df_receipt |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    quantile_0 = quantile(total_amount, 0),
+    quantile_1 = quantile(total_amount, 0.25),
+    quantile_2 = quantile(total_amount, 0.5),
+    quantile_3 = quantile(total_amount, 0.75),
+    category = case_when(
+      between(total_amount, quantile_0, quantile_1) ~ 1,
+      between(total_amount, quantile_1, quantile_2) ~ 2,
+      between(total_amount, quantile_2, quantile_3) ~ 3,
+      total_amount >= quantile_3 ~ 4,
+      # between()は未満にならないので不可。
+    )
+  ) |> 
+  select(
+    customer_id,
+    total_amount,
+    category
+  ) |> 
+  head(10)
+
+# 以下のように修正
+
+df_receipt |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    quantile_1 = quantile(total_amount, 0.25),
+    quantile_2 = quantile(total_amount, 0.5),
+    quantile_3 = quantile(total_amount, 0.75),
+    category = case_when(
+      total_amount < quantile_1 ~ 1,
+      total_amount < quantile_2 ~ 2,
+      total_amount < quantile_3 ~ 3,
+      TRUE ~ 4,
+      # case_when()は上から当てはまったらもうその後は見ない。
+    )
+  ) |> 
+  select(
+    customer_id,
+    total_amount,
+    category
+  ) |> 
+  head(10)
 ```
 
 > R-056: 顧客データ（df_customer）の年齢（age）をもとに10歳刻みで年代を算出し、顧客ID（customer_id）、生年月日（birth_day）とともに10件表示せよ。ただし、60歳以上は全て60歳代とすること。年代を表すカテゴリ名は任意とする。
 
 ```{r}
+
+df_customer |> 
+  mutate(
+    age_class = floor(age / 10) * 10,
+    age_class = if_else(age_class >= 60, 60, age_class)
+  ) |> 
+  select(
+    customer_id,
+    birth_day,
+    age_class
+  ) |> 
+  head(10)
+
 ```
 
 > R-057: 056の抽出結果と性別コード（gender_cd）により、新たに性別×年代の組み合わせを表すカテゴリデータを作成し、10件表示せよ。組み合わせを表すカテゴリの値は任意とする。
 
 ```{r}
+
+df_customer |> 
+  mutate(
+    age_class = floor(age / 10) * 10,
+    age_class = if_else(age_class >= 60, 60, age_class),
+    gender_age_class = age_class + gender_cd
+  ) |> 
+  select(
+    customer_id,
+    gender_age_class
+  ) |> 
+  head(10)
+
 ```
 
 > R-058: 顧客データ（df_customer）の性別コード（gender_cd）をダミー変数化し、顧客ID（customer_id）とともに10件表示せよ。
 
 ```{r}
+
+df_customer |> 
+  mutate(
+    dummy_male = if_else(gender_cd==0, 1, 0),
+    dummy_female = if_else(gender_cd==1, 1, 0),
+    dummy_unknown = if_else(gender_cd==9, 1, 0)
+  ) |> 
+  select(
+    customer_id,
+    dummy_male,
+    dummy_female,
+    dummy_unknown
+  ) |> 
+  head(10)
+
 ```
 
 ### 数値変換
@@ -1128,11 +1315,56 @@ df_receipt |>
 > R-059: レシート明細データ（df_receipt）の売上金額（amount）を顧客ID（customer_id）ごとに合計し、売上金額合計を平均0、標準偏差1に標準化して顧客ID、売上金額合計とともに10件表示せよ。標準化に使用する標準偏差は、分散の平方根、もしくは不偏分散の平方根のどちらでも良いものとする。ただし、顧客IDが"Z"から始まるのものは非会員を表すため、除外して計算すること。
 
 ```{r}
+
+df_receipt |> 
+  filter(
+    !str_detect(customer_id, "^Z")
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    mean_total_amount = mean(total_amount),
+    sd_total_amount = sqrt(mean((total_amount - mean(total_amount))^2)),
+    # scale(total_amount)[,1]でよい
+    normal_total_amount = (total_amount - mean(total_amount)) / sd_total_amount
+  ) |> 
+  select(
+    customer_id,
+    total_amount,
+    normal_total_amount
+  ) |> 
+  head(10)
+
 ```
 
 > R-060: レシート明細データ（df_receipt）の売上金額（amount）を顧客ID（customer_id）ごとに合計し、売上金額合計を最小値0、最大値1に正規化して顧客ID、売上金額合計とともに10件表示せよ。ただし、顧客IDが"Z"から始まるのものは非会員を表すため、除外して計算すること。
 
 ```{r}
+
+df_receipt |> 
+  filter(
+    !str_detect(customer_id, "^Z")
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    min_amount = min(total_amount),
+    max_amount = max(total_amount),
+    normal_total_amount = (total_amount - min_amount) / (max_amount - min_amount)
+  ) |> 
+  select(
+    customer_id,
+    total_amount,
+    normal_total_amount
+  ) |> 
+  head(10)
+
 ```
 
 > R-061: レシート明細データ（df_receipt）の売上金額（amount）を顧客ID（customer_id）ごとに合計し、売上金額合計を常用対数化（底10）して顧客ID、売上金額合計とともに10件表示せよ。ただし、顧客IDが"Z"から始まるのものは非会員を表すため、除外して計算すること。
