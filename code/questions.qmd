@@ -1011,8 +1011,6 @@ df_receipt |>
 
 ```{r}
 
-as_datetime(1541203200) |> typeof()
-
 df_receipt |> 
   mutate(
     sales_epoch = as_datetime(sales_epoch) |> as_date()
@@ -1583,11 +1581,73 @@ df_receipt |>
 
 ### 日付型の計算
 
-> R-070: レシート明細データ（df_receipt）の売上日（sales_ymd）に対し、顧客データ（df_customer）の会員申込日（application_date）からの経過日数を計算し、顧客ID（customer_id）、売上日、会員申込日とともに10件表示せよ（sales_ymdは数値、application_dateは文字列でデータを保持している点に注意）。
+#### 日付型の種類
+
+-   character / double
+-   Date
+-   POSIXct : 秒まで持つデータ
+-   double (エポック秒) : 1970-01-01からの経過秒数を示すデータ
+
+#### 日付型の変換
+
+-   ymd() : character / double (日付を視覚的に表しているもの) -\> Date
+
+-   ymd_hms() : character / double (日付を視覚的に表しているもので秒数までの情報を持っているもの) -\> POSIXct
+
+-   as_date() : POSIXct / エポック秒 / character -\> Date
+
+-   as_datetime() : エポック秒 -\> POSIXct
+
+-   ymd()とas_date()の違いは、doubleを渡したときに視覚的な日時/エポック秒と取る。
+
+-   それと、POSIXctを引数に取れない/取れる。
+
+-   ymd_hms()とas_datetime()の違いも同様。
 
 ```{r}
 
-ymd(20181103)
+ymd(20180101)
+as_date(20180101)
+
+ymd_hms(20180101122332)
+as_datetime(20180101122332)
+
+ymd(ymd_hms(20180101122332))
+as_date(ymd_hms(20180101122332))
+
+```
+
+#### 日付型からの抽出
+
+-   year()
+-   month()
+-   day()
+-   wday() : 曜日
+
+#### 日付の単位
+
+-   years(n)
+-   months(n)
+-   weeks(n)
+-   days(n)
+-   seconds(n)
+
+#### 日付を丸める
+
+-   floor_date(Date, "year") : その日付と同年の1月1日
+-   floor_date(Date, "month") : その日付と同月の1日
+-   floor_date(Date, "week") : その日付と同週の日曜日
+
+#### 日付の計算
+
+-   Date - Date : 日付間の日数の差
+-   Date + / - years(n) :\
+    単純に単位を足す。存在しない日付は実行できない。 例：ymd("20260330") - months(1) -\> NA
+-   interval(old_Date, new_Date) %/% months(n) : interval()は具体的な日付を保ったままその期間の差を計算できるので、割り算の商を返す%/%を使うと、満何年/ヶ月/週経ったかがわかる。
+
+> R-070: レシート明細データ（df_receipt）の売上日（sales_ymd）に対し、顧客データ（df_customer）の会員申込日（application_date）からの経過日数を計算し、顧客ID（customer_id）、売上日、会員申込日とともに10件表示せよ（sales_ymdは数値、application_dateは文字列でデータを保持している点に注意）。
+
+```{r}
 
 df_receipt |> 
   inner_join(df_customer) |> 
@@ -1608,21 +1668,123 @@ df_receipt |>
 > R-071: レシート明細データ（df_receipt）の売上日（sales_ymd）に対し、顧客データ（df_customer）の会員申込日（application_date）からの経過月数を計算し、顧客ID（customer_id）、売上日、会員申込日とともに10件表示せよ（sales_ymdは数値、application_dateは文字列でデータを保持している点に注意）。1ヶ月未満は切り捨てること。
 
 ```{r}
+
+df_receipt |> 
+  inner_join(df_customer) |> 
+  mutate(
+    application_date = as.character(application_date)
+  ) |> 
+  mutate(
+    pass_months = days(ymd(sales_ymd) - ymd(application_date)) / months(1),
+    pass_months = floor(pass_months),
+  ) |> 
+  select(
+    customer_id, sales_ymd, application_date, pass_months
+  ) |> 
+  head(10)
+
+# 綺麗に書き直すとこんな感じ
+
+df_receipt |> 
+  inner_join(df_customer) |> 
+  mutate(
+    application_date = as.character(application_date)
+  ) |> 
+  mutate(
+    pass_months = interval(ymd(application_date), ymd(sales_ymd)) %/% months(1)
+  ) |> 
+  select(
+    customer_id, sales_ymd, application_date, pass_months
+  ) |> 
+  head(10)
+
 ```
 
 > R-072: レシート明細データ（df_receipt）の売上日（df_customer）に対し、顧客データ（df_customer）の会員申込日（application_date）からの経過年数を計算し、顧客ID（customer_id）、売上日、会員申込日とともに10件表示せよ（sales_ymdは数値、application_dateは文字列でデータを保持している点に注意）。1年未満は切り捨てること。
 
 ```{r}
+
+df_receipt |> 
+  inner_join(df_customer) |> 
+  mutate(
+    application_date = as.character(application_date)
+  ) |> 
+  mutate(
+    pass_months = days(ymd(sales_ymd) - ymd(application_date)) / years(1),
+    pass_months = floor(pass_months)
+  ) |> 
+  select(
+    customer_id, sales_ymd, application_date, pass_months
+  ) |> 
+  head(10)
+
+# これもきれいにするとこんな感じ
+
+df_receipt |> 
+  inner_join(df_customer) |> 
+  mutate(
+    application_date = as.character(application_date)
+  ) |> 
+  mutate(
+    pass_months = interval(ymd(application_date), ymd(sales_ymd)) %/% years(1)
+  ) |> 
+  select(
+    customer_id, sales_ymd, application_date, pass_months
+  ) |> 
+  head(10)
+
 ```
 
 > R-073: レシート明細データ（df_receipt）の売上日（sales_ymd）に対し、顧客データ（df_customer）の会員申込日（application_date）からのエポック秒による経過時間を計算し、顧客ID（customer_id）、売上日、会員申込日とともに10件表示せよ（なお、sales_ymdは数値、application_dateは文字列でデータを保持している点に注意）。なお、時間情報は保有していないため各日付は0時0分0秒を表すものとする。
 
 ```{r}
+
+df_receipt |> 
+  inner_join(df_customer) |> 
+  mutate(
+    application_date = as.character(application_date)
+  ) |> 
+  mutate(
+    pass_seconds = sales_epoch -seconds(as_datetime(ymd(application_date))),
+  ) |> 
+  select(
+    customer_id, sales_ymd, application_date, pass_seconds
+  ) |> 
+  head(10)
+
+# これは上手に書くとこんな感じ
+
+df_receipt |> 
+  inner_join(df_customer) |> 
+  mutate(
+    application_date = as.character(application_date)
+  ) |> 
+  mutate(
+    sales_ymd = ymd(sales_ymd),
+    application_date = ymd(application_date),
+    pass_seconds = interval(application_date, sales_ymd) %/% seconds(1)
+  ) |> 
+  select(
+    customer_id, sales_ymd, application_date, pass_seconds
+  ) |> 
+  head(10)
+
 ```
 
 > R-074: レシート明細データ（df_receipt）の売上日（sales_ymd）に対し、当該週の月曜日からの経過日数を計算し、売上日、直前の月曜日付とともに10件表示せよ（sales_ymdは数値でデータを保持している点に注意）。
 
 ```{r}
+
+df_receipt |> 
+  mutate(
+    day_num = wday(ymd(sales_ymd), week_start = 1) - 1,
+    last_monday = ymd(sales_ymd) - day_num
+  ) |> 
+  select(
+    sales_ymd, last_monday, day_num
+  ) |> 
+  head(10)
+
 ```
 
 ### サンプリング
@@ -1630,11 +1792,22 @@ df_receipt |>
 > R-075: 顧客データ（df_customer）からランダムに1%のデータを抽出し、先頭から10件表示せよ。
 
 ```{r}
+
+df_customer |> 
+  slice_sample(prop = 0.01) |> 
+  head(10)
+
 ```
 
 > R-076: 顧客データ（df_customer）から性別コード（gender_cd）の割合に基づきランダムに10%のデータを層化抽出し、性別コードごとに件数を集計せよ。
 
 ```{r}
+
+df_customer |> 
+  group_by(gender_cd) |> 
+  slice_sample(prop = 0.1) |> 
+  summarise(n())
+
 ```
 
 ### 外れ値・異常値
@@ -1642,11 +1815,50 @@ df_receipt |>
 > R-077: レシート明細データ（df_receipt）の売上金額を顧客単位に合計し、合計した売上金額の外れ値を抽出せよ。なお、外れ値は売上金額合計を対数化したうえで平均と標準偏差を計算し、その平均から3σを超えて離れたものとする（自然対数と常用対数のどちらでも可）。結果は10件表示せよ。
 
 ```{r}
+
+df_receipt |>
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount),
+    log_total_amount = log(total_amount),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    mean_log_total_amount = mean(log_total_amount),
+    sd = sqrt(mean((log_total_amount - mean_log_total_amount)^2))
+  ) |> 
+  filter(
+    abs(log_total_amount - mean_log_total_amount) > 3 * sd
+  )
+
 ```
 
 > R-078: レシート明細データ（df_receipt）の売上金額（amount）を顧客単位に合計し、合計した売上金額の外れ値を抽出せよ。ただし、顧客IDが"Z"から始まるのものは非会員を表すため、除外して計算すること。なお、ここでは外れ値を第1四分位と第3四分位の差であるIQRを用いて、「第1四分位数-1.5×IQR」を下回るもの、または「第3四分位数+1.5×IQR」を超えるものとする。結果は10件表示せよ。
 
 ```{r}
+
+df_receipt |> 
+  filter(
+    !str_detect(customer_id, "^Z")
+  ) |> 
+  group_by(customer_id) |> 
+  summarise(
+    total_amount = sum(amount),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    quantile_1 = quantile(total_amount, 0.25),
+    quantile_3 = quantile(total_amount, 0.75),
+    IQR = quantile(total_amount, 0.75) - quantile(total_amount, 0.25),
+    # IQR()という関数も普通にある。
+    lower_lim = quantile_1 - 1.5*IQR,
+    upper_lim = quantile_3 + 1.5*IQR
+  ) |> 
+  filter(
+    total_amount < lower_lim | total_amount > upper_lim
+  ) |> 
+  head(10)
+
 ```
 
 ### 欠損値
@@ -1654,11 +1866,55 @@ df_receipt |>
 > R-079: 商品データ（df_product）の各項目に対し、欠損数を確認せよ。
 
 ```{r}
+
+df_product |> 
+  summarise(
+    sum(is.na(category_major_cd)),
+    sum(is.na(category_medium_cd)),
+    sum(is.na(category_small_cd)),
+    sum(is.na(unit_price)),
+    sum(is.na(unit_cost)),
+    sum(is.na(`﻿product_cd`))
+  )
+
+# mutate()やsummarise()の中で、すべての列に同じことをするならacross()が良い。
+
+df_product |> 
+  summarise(
+    across(.cols = everything(), .fns = \(x) sum(is.na(x)))
+    # everything()はすべての列を選択する
+    # \(x)は無名関数を持ってくる。つまり、自分で作っている関数だということの宣言
+    # xはその無名関数の中で、変数が入る場所。
+    # across()した時点で、変数は列となる。
+  )
+
+across
+
 ```
 
 > R-080: 商品データ（df_product）のいずれかの項目に欠損が発生しているレコードを全て削除した新たな商品データを作成せよ。なお、削除前後の件数を表示させ、079で確認した件数だけ減少していることも確認すること。
 
 ```{r}
+
+nrow_df_product <-
+  df_product |>
+  nrow()
+
+nrow_dropped_df_product <-
+  df_product |> 
+  drop_na(colnames(df_product)) |> 
+  nrow()
+
+print(nrow_df_product - nrow_dropped_df_product)
+
+
+# drop_na()は何も指定しなくても、すべての列を対象にしてくれます。
+
+nrow_dropped_df_product <-
+  df_product |> 
+  drop_na() |> 
+  nrow()
+
 ```
 
 > R-081: 単価（unit_price）と原価（unit_cost）の欠損値について、それぞれの平均値で補完した新たな商品データを作成せよ。なお、平均値については1円未満を丸めること（四捨五入または偶数への丸めで良い）。補完実施後、各項目について欠損が生じていないことも確認すること。
@@ -1692,7 +1948,7 @@ df_receipt |>
 
 > R-086: 085で作成した緯度経度つき顧客データに対し、会員申込店舗コード（application_store_cd）をキーに店舗データ（df_store）と結合せよ。そして申込み店舗の緯度（latitude）・経度情報（longitude)と顧客住所（address）の緯度・経度を用いて申込み店舗と顧客住所の距離（単位：km）を求め、顧客ID（customer_id）、顧客住所（address）、店舗住所（address）とともに表示せよ。計算式は以下の簡易式で良いものとするが、その他精度の高い方式を利用したライブラリを利用してもかまわない。結果は10件表示せよ。
 >
-緯度（ラジアン）：経度（ラジアン）：距離
+> 緯度（ラジアン）：経度（ラジアン）：距離
 
 ```{r}
 ```
@@ -1706,7 +1962,7 @@ df_receipt |>
 
 > R-088: 087で作成したデータを元に、顧客データに統合名寄IDを付与したデータを作成せよ。ただし、統合名寄IDは以下の仕様で付与するものとする。
 >
->重複していない顧客：顧客ID（customer_id）を設定 重複している顧客：前設問で抽出したレコードの顧客IDを設定 顧客IDのユニーク件数と、統合名寄IDのユニーク件数の差も確認すること。
+> 重複していない顧客：顧客ID（customer_id）を設定 重複している顧客：前設問で抽出したレコードの顧客IDを設定 顧客IDのユニーク件数と、統合名寄IDのユニーク件数の差も確認すること。
 
 ```{r}
 ```
@@ -1746,9 +2002,9 @@ df_receipt |>
 >
 > \|ファイル形式\|ヘッダ有無\|文字エンコーディング\| \|:--:\|:--:\|:--:\| \|CSV（カンマ区切り）\|有り\|UTF-8\|
 >
->ファイル出力先のパスは以下のようにすること
+> ファイル出力先のパスは以下のようにすること
 >
->\|出力先\| \|:--:\| \|./data\|
+> \|出力先\| \|:--:\| \|./data\|
 
 ```{r}
 ```
